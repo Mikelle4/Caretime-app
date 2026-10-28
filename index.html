@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CareTime — Organisation & Suivi des Soins</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            medblue: { 50: '#f0f9ff', 100: '#e0f2fe', 600: '#0284c7', 700: '#0369a1' },
+            medgreen: { 50: '#ecfdf5', 600: '#059669' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes alarm-pulse {
+      0% { transform: scale(0.98); } 50% { transform: scale(1.02); } 100% { transform: scale(0.98); }
+    }
+    .animate-alarm { animation: alarm-pulse 1.6s infinite ease-in-out; }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-800 antialiased" onclick="CareTime.audio.init()">
+
+  <!-- HEADER -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-emerald-500 flex items-center justify-center text-white font-bold text-xl shadow-sm">
+          +
+        </div>
+        <div>
+          <span class="text-xl font-bold tracking-tight text-slate-900">Care<span class="text-sky-600">Time</span></span>
+          <span class="hidden sm:inline-block ml-2 text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">Poste infirmier</span>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <div class="hidden sm:flex items-center space-x-2 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+          <span class="w-2 h-2 rounded-full bg-amber-400" id="audio-indicator"></span>
+          <span id="audio-label" class="text-slate-600">Audio prêt au clic</span>
+        </div>
+
+        <button onclick="CareTime.audio.test()" class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition">
+          🔔 Tester sonnerie
+        </button>
+
+        <button onclick="CareTime.ui.openModal('modal-care')" class="px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700 transition">
+          + Nouveau Soin
+        </button>
+
+        <button onclick="CareTime.team.toggleRole()" id="role-btn" class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200">
+          Infirmier(ère)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- BANDEAU INFO LIMITES TECHNIQUES -->
+  <aside class="bg-sky-50 border-b border-sky-100 px-4 py-2 text-xs text-sky-950 flex flex-col sm:flex-row justify-between gap-1">
+    <div>
+      <strong>Mode Local Actif :</strong> Minuteurs et alertes audibles opérationnels <em>lorsque l'onglet est ouvert</em>. Données enregistrées dans ce navigateur.
+    </div>
+    <div class="flex items-center space-x-2">
+      <span class="text-slate-500">Fuseau : <strong id="tz-label">Local</strong></span>
+      <button onclick="CareTime.notif.request()" class="text-sky-700 font-bold underline">Activer notifications</button>
+    </div>
+  </aside>
+
+  <!-- CORPS -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- NAVIGATION DESKTOP -->
+    <aside class="hidden md:flex flex-col w-60 bg-white border-r border-slate-200 p-4 space-y-1 shrink-0">
+      <nav class="space-y-1">
+        <button onclick="CareTime.ui.navigate('dashboard')" id="nav-dashboard" class="w-full text-left px-3 py-2 rounded-lg text-sm font-semibold bg-sky-50 text-sky-700">Tableau de bord</button>
+        <button onclick="CareTime.ui.navigate('patients')" id="nav-patients" class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Patients</button>
+        <button onclick="CareTime.ui.navigate('planning')" id="nav-planning" class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Planning des Soins</button>
+        <button onclick="CareTime.ui.navigate('suivi')" id="nav-suivi" class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Suivi des Soins</button>
+        <button onclick="CareTime.ui.navigate('settings')" id="nav-settings" class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50">Paramètres</button>
+      </nav>
+      <div class="mt-auto bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[11px] text-slate-500">
+        CareTime Prototype v2.5<br>Données locales sécurisées sans serveur.
+      </div>
+    </aside>
+
+    <!-- CONTENU PRINCIPAL -->
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-20 md:pb-8">
+
+      <!-- VUE 1 : DASHBOARD -->
+      <section id="view-dashboard" class="space-y-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-900">Tableau de bord</h1>
+            <p id="dashboard-date" class="text-sm text-slate-500 font-medium"></p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="CareTime.cares.createTestCareInOneMin()" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100">
+              ⚡ Soin test (+1 min)
+            </button>
+            <button onclick="CareTime.ui.openModal('modal-patient')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">
+              + Patient
+            </button>
+            <button onclick="CareTime.ui.openModal('modal-care')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700">
+              + Programmer Soin
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <p class="text-xs font-bold text-slate-500 uppercase">Patients enregistrés</p>
+            <p id="stat-patients" class="text-2xl font-bold text-slate-900 mt-1">0</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <p class="text-xs font-bold text-slate-500 uppercase">Soins aujourd'hui</p>
+            <p id="stat-today" class="text-2xl font-bold text-sky-600 mt-1">0</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <p class="text-xs font-bold text-slate-500 uppercase">Soins réalisés</p>
+            <p id="stat-done" class="text-2xl font-bold text-emerald-600 mt-1">0</p>
+          </div>
+          <div class="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/20">
+            <p class="text-xs font-bold text-rose-700 uppercase">Soins en retard</p>
+            <p id="stat-late" class="text-2xl font-bold text-rose-600 mt-1">0</p>
+          </div>
+        </div>
+
+        <div id="sup-alert" class="hidden bg-indigo-50 border border-indigo-200 p-3 rounded-xl text-xs text-indigo-900">
+          <strong>Mode Superviseur :</strong> Surveillance active de la tournée et de la patientèle collective.
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-200 font-bold text-slate-900 text-sm">
+            Prochains soins à dispenser aujourd'hui
+          </div>
+          <div id="dashboard-cares-list" class="divide-y divide-slate-100"></div>
+        </div>
+      </section>
+
+      <!-- VUE 2 : PATIENTS -->
+      <section id="view-patients" class="hidden space-y-4">
+        <div class="flex justify-between items-center">
+          <h1 class="text-2xl font-bold text-slate-900">Dossiers Patients</h1>
+          <button onclick="CareTime.ui.openModal('modal-patient')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700">
+            + Ajouter Patient
+          </button>
+        </div>
+        <input type="text" id="patient-search" oninput="CareTime.render.patients()" placeholder="Rechercher par nom ou contact..." class="w-full max-w-md px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm">
+        <div id="patients-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      </section>
+
+      <!-- VUE 3 : PLANNING -->
+      <section id="view-planning" class="hidden space-y-4">
+        <div class="flex justify-between items-center">
+          <h1 class="text-2xl font-bold text-slate-900">Planning des Soins</h1>
+          <button onclick="CareTime.ui.openModal('modal-care')" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-600 text-white hover:bg-sky-700">
+            + Programmer
+          </button>
+        </div>
+
+        <div class="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
+            <input type="date" id="planning-date" onchange="CareTime.render.planning()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Patient</label>
+            <select id="planning-pat-filter" onchange="CareTime.render.planning()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50">
+              <option value="all">Tous les patients</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Statut</label>
+            <select id="planning-status-filter" onchange="CareTime.render.planning()" class="w-full px-2 py-1.5 border border-slate-200 rounded text-sm bg-slate-50">
+              <option value="all">Tous les statuts</option>
+              <option value="En attente">En attente</option>
+              <option value="Réalisé">Réalisé</option>
+              <option value="Reporté">Reporté</option>
+              <option value="Manqué">Manqué</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+          <div id="planning-list" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <!-- VUE 4 : SUIVI -->
+      <section id="view-suivi" class="hidden space-y-4">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <h1 class="text-2xl font-bold text-slate-900">Suivi des Soins</h1>
+          <div class="flex flex-wrap gap-1">
+            <button onclick="CareTime.ui.setSuiviTab('all')" class="tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-sky-600 text-white" data-tab="all">Tous</button>
+            <button onclick="CareTime.ui.setSuiviTab('En attente')" class="tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-600" data-tab="En attente">En attente</button>
+            <button onclick="CareTime.ui.setSuiviTab('Réalisé')" class="tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-600" data-tab="Réalisé">Réalisés</button>
+            <button onclick="CareTime.ui.setSuiviTab('Reporté')" class="tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-600" data-tab="Reporté">Reportés</button>
+            <button onclick="CareTime.ui.setSuiviTab('Manqué')" class="tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-600" data-tab="Manqué">Manqués</button>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100" id="suivi-list"></div>
+      </section>
+
+      <!-- VUE 5 : PARAMÈTRES -->
+      <section id="view-settings" class="hidden space-y-4 max-w-2xl">
+        <h1 class="text-2xl font-bold text-slate-900">Paramètres & Données</h1>
+        
+        <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+          <h2 class="font-bold text-sm text-slate-800">Délai d'anticipation du rappel sonore :</h2>
+          <div class="flex gap-4 text-xs font-medium">
+            <label class="flex items-center gap-1.5"><input type="radio" name="opt-rem" value="0" onchange="CareTime.settings.setReminder(0)"> 0 min (heure pile)</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="opt-rem" value="10" onchange="CareTime.settings.setReminder(10)"> 10 min avant</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="opt-rem" value="15" checked onchange="CareTime.settings.setReminder(15)"> 15 min avant</label>
+            <label class="flex items-center gap-1.5"><input type="radio" name="opt-rem" value="20" onchange="CareTime.settings.setReminder(20)"> 20 min avant</label>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+          <h2 class="font-bold text-sm text-slate-800">Données de démonstration</h2>
+          <div class="flex gap-2">
+            <button onclick="CareTime.storage.export()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300">
+              📥 Exporter les données (JSON)
+            </button>
+            <button onclick="CareTime.storage.reset()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200">
+              Réinitialiser la démo
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- NAVIGATION MOBILE -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-3 py-2 flex justify-around shadow-lg z-20">
+    <button onclick="CareTime.ui.navigate('dashboard')" class="text-xs font-bold text-sky-600">Accueil</button>
+    <button onclick="CareTime.ui.navigate('patients')" class="text-xs text-slate-500">Patients</button>
+    <button onclick="CareTime.ui.openModal('modal-care')" class="text-xs text-white bg-sky-600 w-8 h-8 rounded-full flex items-center justify-center font-bold -mt-3 shadow">+</button>
+    <button onclick="CareTime.ui.navigate('planning')" class="text-xs text-slate-500">Planning</button>
+    <button onclick="CareTime.ui.navigate('suivi')" class="text-xs text-slate-500">Suivi</button>
+  </nav>
+
+  <!-- MODALE ALERTE SONNERIE EN DIRECT -->
+  <div id="modal-alert" class="fixed inset-0 z-50 bg-slate-900/60 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 animate-alarm shadow-2xl border-2 border-sky-500">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">🔔</span>
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Alerte de Passage</span>
+          <h3 id="alert-pat" class="text-lg font-bold text-slate-900">Patient</h3>
+        </div>
+      </div>
+      <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
+        <p><strong class="text-slate-700">Acte :</strong> <span id="alert-care"></span></p>
+        <p><strong class="text-slate-700">Heure du soin :</strong> <span id="alert-time"></span></p>
+      </div>
+      <div class="space-y-1.5 pt-1">
+        <button onclick="CareTime.reminders.resolve('Réalisé')" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-lg text-xs hover:bg-emerald-700">✓ Marquer comme Réalisé</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="CareTime.reminders.resolve('Reporter-15')" class="py-1.5 bg-slate-100 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-200">⏱ +15 min</button>
+          <button onclick="CareTime.reminders.resolve('Manqué')" class="py-1.5 bg-rose-50 text-rose-700 font-bold rounded-lg text-xs hover:bg-rose-100">✕ Manqué</button>
+        </div>
+        <button onclick="CareTime.reminders.dismissSoundOnly()" class="w-full py-1 text-slate-500 text-xs underline text-center">Couper sonnerie</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE PATIENT -->
+  <div id="modal-patient" class="fixed inset-0 z-50 bg-slate-900/40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-3 shadow-xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 id="pat-modal-title" class="font-bold text-slate-900">Nouveau Patient</h3>
+        <button onclick="CareTime.ui.closeModal('modal-patient')" class="text-slate-400 font-bold">&times;</button>
+      </div>
+      <form onsubmit="CareTime.patients.save(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="p-id">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="text" id="p-nom" required placeholder="Nom *" class="p-2 border rounded">
+          <input type="text" id="p-prenom" required placeholder="Prénom *" class="p-2 border rounded">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <input type="number" id="p-age" placeholder="Âge" class="p-2 border rounded">
+          <input type="text" id="p-contact" placeholder="Contact" class="p-2 border rounded">
+        </div>
+        <textarea id="p-obs" placeholder="Observations logistiques / médicales..." class="w-full p-2 border rounded h-16"></textarea>
+        <div class="flex justify-end gap-2 pt-2 border-t">
+          <button type="button" onclick="CareTime.ui.closeModal('modal-patient')" class="px-3 py-1.5 rounded text-slate-600">Annuler</button>
+          <button type="submit" class="px-3 py-1.5 rounded bg-sky-600 text-white font-bold">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODALE SOIN -->
+  <div id="modal-care" class="fixed inset-0 z-50 bg-slate-900/40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 space-y-3 shadow-xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-900">Programmer un Soin</h3>
+        <button onclick="CareTime.ui.closeModal('modal-care')" class="text-slate-400 font-bold">&times;</button>
+      </div>
+      <form onsubmit="CareTime.cares.save(event)" class="space-y-3 text-xs">
+        <select id="c-patient" required class="w-full p-2 border rounded bg-white"></select>
+        <input type="text" id="c-desc" required placeholder="Description de l'acte *" class="w-full p-2 border rounded">
+        <div class="grid grid-cols-2 gap-2">
+          <input type="date" id="c-date" required class="p-2 border rounded">
+          <input type="time" id="c-time" required class="p-2 border rounded">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-[10px] text-slate-500 block mb-1">Durée (jours consécutifs)</label>
+            <input type="number" id="c-days" min="1" max="60" value="1" required class="w-full p-2 border rounded">
+          </div>
+          <div>
+            <label class="text-[10px] text-slate-500 block mb-1">Rappel avant</label>
+            <select id="c-rem" class="w-full p-2 border rounded bg-white">
+              <option value="0">À l'heure exacte (0m)</option>
+              <option value="10">10 min avant</option>
+              <option value="15" selected>15 min avant</option>
+              <option value="20">20 min avant</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2 border-t">
+          <button type="button" onclick="CareTime.ui.closeModal('modal-care')" class="px-3 py-1.5 rounded text-slate-600">Annuler</button>
+          <button type="submit" class="px-3 py-1.5 rounded bg-sky-600 text-white font-bold">Valider</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODALE FICHE PATIENT -->
+  <div id="modal-card" class="fixed inset-0 z-50 bg-slate-900/40 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-5 space-y-3 shadow-xl max-h-[90vh] flex flex-col">
+      <div class="flex justify-between items-center border-b pb-2">
+        <div>
+          <h3 id="card-name" class="font-bold text-slate-900 text-base">Nom Prénom</h3>
+          <p id="card-meta" class="text-xs text-slate-500"></p>
+        </div>
+        <button onclick="CareTime.ui.closeModal('modal-card')" class="text-slate-400 font-bold">&times;</button>
+      </div>
+      <div class="overflow-y-auto space-y-3 flex-1 text-xs">
+        <div class="bg-slate-50 p-2.5 rounded border border-slate-200">
+          <strong class="text-slate-700">Observations :</strong>
+          <p id="card-obs" class="text-slate-600 italic"></p>
+        </div>
+        <h4 class="font-bold text-slate-800">Historique des soins</h4>
+        <div id="card-timeline" class="space-y-2"></div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t">
+        <button id="card-del-btn" class="text-xs text-rose-600 hover:underline">Supprimer le patient</button>
+        <button onclick="CareTime.ui.closeModal('modal-card')" class="px-3 py-1.5 bg-slate-100 rounded text-xs">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT MODULAIRE & ROBUSTE -->
+  <script>
+    const CareTime = (() => {
+
+      // ÉTAT & DONNÉES PAR DÉFAUT
+      const state = {
+        patients: [],
+        cares: [],
+        role: 'pro',
+        defaultRem: 15,
+        suiviTab: 'all',
+        activeAlarm: null
+      };
+
+      const DEFAULT_PATIENTS = [
+        { id: 'pat-1', nom: 'Dupont', prenom: 'Jean', age: 74, contact: '06 12 34 56 78', observations: 'Code 2410. Anticoagulant.' },
+        { id: 'pat-2', nom: 'Martin', prenom: 'Marie', age: 62, contact: '06 98 76 54 32', observations: 'Allergie sparadrap classique.' }
+      ];
+
+      // UTILITAIRES
+      const utils = {
+        today(offset = 0) {
+          const d = new Date();
+          d.setDate(d.getDate() + offset);
+          return d.toISOString().split('T')[0];
+        },
+        timeNow(offsetMin = 0) {
+          const d = new Date();
+          d.setMinutes(d.getMinutes() + offsetMin);
+          return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        },
+        remTime(timeStr, remOffset) {
+          if (!timeStr) return '--:--';
+          const [h, m] = timeStr.split(':').map(Number);
+          const t = h * 60 + m - remOffset;
+          const rh = Math.floor((t + 1440) % 1440 / 60);
+          const rm = (t + 1440) % 60;
+          return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`;
+        },
+        badge(status, isLate) {
+          if (isLate) return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">En retard</span>';
+          if (status === 'Réalisé') return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">Réalisé</span>';
+          if (status === 'Reporté') return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">Reporté</span>';
+          if (status === 'Manqué') return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">Manqué</span>';
+          return '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">En attente</span>';
+        }
+      };
+
+      // STOCKAGE LOCALSTORAGE
+      const storage = {
+        load() {
+          const p = localStorage.getItem('caretime_p');
+          const c = localStorage.getItem('caretime_c');
+          const s = localStorage.getItem('caretime_s');
+          state.patients = p ? JSON.parse(p) : DEFAULT_PATIENTS;
+          state.cares = c ? JSON.parse(c) : [
+            {
+              id: 'care-1', patientId: 'pat-1', description: 'Pansement escarre',
+              date: utils.today(0), time: '09:00', durationDays: 2, reminderMinutes: 15,
+              occurrences: [
+                { day: 1, date: utils.today(0), status: 'En attente', reminderFired: false },
+                { day: 2, date: utils.today(1), status: 'En attente', reminderFired: false }
+              ]
+            }
+          ];
+          if (s) {
+            const parsed = JSON.parse(s);
+            state.role = parsed.role || 'pro';
+            state.defaultRem = parsed.defaultRem ?? 15;
+          }
+        },
+        save() {
+          localStorage.setItem('caretime_p', JSON.stringify(state.patients));
+          localStorage.setItem('caretime_c', JSON.stringify(state.cares));
+          localStorage.setItem('caretime_s', JSON.stringify({ role: state.role, defaultRem: state.defaultRem }));
+        },
+        reset() {
+          if (confirm('Réinitialiser toutes les données de démo ?')) {
+            localStorage.clear();
+            storage.load();
+            render.all();
+          }
+        },
+        export() {
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ patients: state.patients, cares: state.cares }, null, 2));
+          const dl = document.createElement('a');
+          dl.setAttribute("href", dataStr);
+          dl.setAttribute("download", `caretime_export_${utils.today(0)}.json`);
+          document.body.appendChild(dl);
+          dl.click();
+          dl.remove();
+        }
+      };
+
+      // MOTEUR AUDIO (WEB AUDIO API NATIVE SANS FICHIER EXTERNE)
+      const audio = {
+        ctx: null,
+        loop: null,
+        unlocked: false,
+        init() {
+          if (!audio.ctx) audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          if (audio.ctx.state === 'suspended') {
+            audio.ctx.resume().then(() => {
+              audio.unlocked = true;
+              document.getElementById('audio-indicator').className = 'w-2 h-2 rounded-full bg-emerald-500';
+              document.getElementById('audio-label').innerText = 'Audio prêt';
+            });
+          }
+        },
+        beep(freq, duration) {
+          if (!audio.ctx) return;
+          const osc = audio.ctx.createOscillator();
+          const gain = audio.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, audio.ctx.currentTime);
+          gain.gain.setValueAtTime(0.2, audio.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audio.ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(audio.ctx.destination);
+          osc.start();
+          osc.stop(audio.ctx.currentTime + duration);
+        },
+        chime() {
+          audio.init();
+          audio.beep(784, 0.15);
+          setTimeout(() => audio.beep(988, 0.25), 160);
+        },
+        startAlarm() {
+          audio.chime();
+          if (!audio.loop) audio.loop = setInterval(audio.chime, 2200);
+        },
+        stopAlarm() {
+          if (audio.loop) { clearInterval(audio.loop); audio.loop = null; }
+        },
+        test() {
+          audio.init();
+          reminders.trigger({ description: 'Test sonnerie médicale', time: utils.timeNow(0) }, { day: 1 }, { nom: 'TEST SONNERIE', prenom: 'Patient Fictif' });
+        }
+      };
+
+      // NOTIFICATIONS — VERSION AVEC RETOUR VISIBLE
+const notif = {
+  async request() {
+    audio.init();
+
+    // Vérifier la prise en charge par le navigateur
+    if (!('Notification' in window)) {
+      alert(
+        "CareTime : ce navigateur ne prend pas en charge " +
+        "les notifications. Essayez d'ouvrir l'application " +
+        "dans Chrome via un serveur local ou une adresse HTTPS."
+      );
+      return;
+    }
+
+    // Vérifier le contexte de sécurité
+    if (!window.isSecureContext) {
+      alert(
+        "CareTime : les notifications nécessitent un contexte sécurisé. " +
+        "Ouvrez l'application depuis une adresse HTTPS ou un serveur " +
+        "local compatible."
+      );
+      return;
+    }
+
+    // Vérifier si les notifications sont déjà autorisées
+    if (Notification.permission === 'granted') {
+  try {
+    new Notification("CareTime — Test", {
+      body: "Bonne nouvelle ! Les notifications de test fonctionnent."
+    });
+
+    alert("Notification de test envoyée. Vérifie le panneau de notifications de ta tablette.");
+  } catch (error) {
+    console.error(error);
+    alert("L'autorisation est accordée, mais le navigateur n'a pas pu afficher la notification. Essaie dans un navigateur compatible.");
+  }
+
+  return;
+}
+
+    // Vérifier si elles ont été bloquées auparavant
+    if (Notification.permission === 'denied') {
+      alert(
+        "Les notifications sont bloquées pour cette page. " +
+        "Ouvrez les paramètres du navigateur, recherchez les " +
+        "autorisations du site et autorisez les notifications " +
+        "si cette option est disponible."
+      );
+      return;
+    }
+
+    // Demander l'autorisation
+    try {
+      const permission = await Notification.requestPermission();
+
+      if (permission === 'granted') {
+        alert("Notifications autorisées !");
+
+        new Notification("CareTime", {
+          body: "Les notifications de test sont activées."
+        });
+      } else if (permission === 'denied') {
+        alert("Autorisation refusée. Vérifiez les paramètres du navigateur.");
+      } else {
+        alert("Autorisation non accordée. Vous pourrez réessayer.");
+      }
+    } catch (error) {
+      console.error("Erreur de notification :", error);
+      alert(
+        "Impossible d'activer les notifications. " +
+        "Consultez la console du navigateur pour connaître l'erreur."
+      );
+    }
+  },
+
+  send(title, body) {
+    if (
+      'Notification' in window &&
+      Notification.permission === 'granted'
+    ) {
+      try {
+        new Notification(title, { body });
+      } catch (error) {
+        console.error("Erreur lors de l'envoi de la notification :", error);
+      }
+    }
+  }
+};
+
+      // MINUTEUR ET ANTI-DOUBLONS
+      const reminders = {
+        check() {
+          const now = new Date();
+          const today = utils.today(0);
+          state.cares.forEach(c => {
+            c.occurrences.forEach(occ => {
+              if (occ.date === today && (occ.status === 'En attente' || occ.status === 'Reporté') && !occ.reminderFired) {
+                const [h, m] = c.time.split(':').map(Number);
+                const careDate = new Date();
+                careDate.setHours(h, m, 0, 0);
+                const remDate = new Date(careDate.getTime() - (c.reminderMinutes || 0) * 60000);
+                const diff = now.getTime() - remDate.getTime();
+                
+                // Déclenchement si l'heure est venue (fenêtre max de 45 minutes)
+                if (diff >= 0 && diff < 45 * 60 * 1000) {
+                  occ.reminderFired = true;
+                  storage.save();
+                  const p = state.patients.find(item => item.id === c.patientId) || { nom: 'Inconnu', prenom: '' };
+                  reminders.trigger(c, occ, p);
+                } else if (diff >= 45 * 60 * 1000) {
+                  occ.reminderFired = true;
+                  storage.save();
+                }
+              }
+            });
+          });
+        },
+        trigger(care, occ, pat) {
+          audio.startAlarm();
+          state.activeAlarm = { care, occ };
+          document.getElementById('alert-pat').innerText = `${pat.nom} ${pat.prenom}`;
+          document.getElementById('alert-care').innerText = care.description;
+          document.getElementById('alert-time').innerText = care.time;
+          ui.openModal('modal-alert');
+          notif.send(`Rappel Soin : ${pat.nom}`, `${care.description} à ${care.time}`);
+        },
+        resolve(action) {
+          audio.stopAlarm();
+          ui.closeModal('modal-alert');
+          if (!state.activeAlarm) return;
+          const { care, occ } = state.activeAlarm;
+          if (action === 'Réalisé') {
+            occ.status = 'Réalisé';
+          } else if (action === 'Reporter-15') {
+            const [h, m] = care.time.split(':').map(Number);
+            const t = h * 60 + m + 15;
+            care.time = `${String(Math.floor((t % 1440) / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+            occ.status = 'Reporté';
+            occ.reminderFired = false;
+          } else if (action === 'Manqué') {
+            occ.status = 'Manqué';
+          }
+          state.activeAlarm = null;
+          storage.save();
+          render.all();
+        },
+        dismissSoundOnly() {
+          audio.stopAlarm();
+          ui.closeModal('modal-alert');
+          state.activeAlarm = null;
+        }
+      };
+
+      // GESTION PATIENTS
+      const patients = {
+        save(e) {
+          e.preventDefault();
+          const id = document.getElementById('p-id').value;
+          const nom = document.getElementById('p-nom').value.trim();
+          const prenom = document.getElementById('p-prenom').value.trim();
+          const age = document.getElementById('p-age').value;
+          const contact = document.getElementById('p-contact').value.trim();
+          const observations = document.getElementById('p-obs').value.trim();
+
+          if (id) {
+            const p = state.patients.find(x => x.id === id);
+            if (p) Object.assign(p, { nom, prenom, age, contact, observations });
+          } else {
+            state.patients.push({ id: 'pat-' + Date.now(), nom, prenom, age, contact, observations });
+          }
+          storage.save();
+          ui.closeModal('modal-patient');
+          document.getElementById('p-id').value = '';
+          e.target.reset();
+          render.all();
+        },
+        edit(id) {
+          const p = state.patients.find(x => x.id === id);
+          if (!p) return;
+          document.getElementById('p-id').value = p.id;
+          document.getElementById('p-nom').value = p.nom;
+          document.getElementById('p-prenom').value = p.prenom;
+          document.getElementById('p-age').value = p.age || '';
+          document.getElementById('p-contact').value = p.contact || '';
+          document.getElementById('p-obs').value = p.observations || '';
+          document.getElementById('pat-modal-title').innerText = 'Modifier Patient';
+          ui.openModal('modal-patient');
+        },
+        del(id) {
+          if (confirm('Supprimer ce patient et ses soins ?')) {
+            state.patients = state.patients.filter(x => x.id !== id);
+            state.cares = state.cares.filter(x => x.patientId !== id);
+            storage.save();
+            ui.closeModal('modal-card');
+            render.all();
+          }
+        }
+      };
+
+      // GESTION SOINS
+      const cares = {
+        save(e) {
+          e.preventDefault();
+          const patientId = document.getElementById('c-patient').value;
+          const description = document.getElementById('c-desc').value.trim();
+          const startDate = document.getElementById('c-date').value;
+          const time = document.getElementById('c-time').value;
+          const durationDays = parseInt(document.getElementById('c-days').value, 10) || 1;
+          const reminderMinutes = parseInt(document.getElementById('c-rem').value, 10) || 0;
+
+          const occurrences = [];
+          for (let i = 0; i < durationDays; i++) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + i);
+            occurrences.push({
+              day: i + 1,
+              date: d.toISOString().split('T')[0],
+              status: 'En attente',
+              reminderFired: false
+            });
+          }
+
+          state.cares.push({
+            id: 'care-' + Date.now(),
+            patientId, description, date: startDate, time, durationDays, reminderMinutes, occurrences
+          });
+
+          storage.save();
+          ui.closeModal('modal-care');
+          e.target.reset();
+          render.all();
+          reminders.check();
+        },
+        createTestCareInOneMin() {
+          const nowOne = utils.timeNow(1);
+          const p = state.patients[0];
+          if (!p) return alert('Ajoutez d\'abord un patient.');
+          state.cares.unshift({
+            id: 'care-test-' + Date.now(),
+            patientId: p.id,
+            description: 'Injection test automatique (+1 min)',
+            date: utils.today(0),
+            time: nowOne,
+            durationDays: 1,
+            reminderMinutes: 0,
+            occurrences: [{ day: 1, date: utils.today(0), status: 'En attente', reminderFired: false }]
+          });
+          storage.save();
+          render.all();
+          alert(`Soin test programmé à ${nowOne}. Laissez l'onglet ouvert pour tester la sonnerie.`);
+        },
+        setStatus(careId, day, status) {
+          const c = state.cares.find(x => x.id === careId);
+          if (!c) return;
+          const occ = c.occurrences.find(x => x.day === day);
+          if (occ) occ.status = status;
+          storage.save();
+          render.all();
+        }
+      };
+
+      // RENDU INTERFACE
+      const render = {
+        all() {
+          render.dashboard();
+          render.patients();
+          render.planning();
+          render.suivi();
+        },
+        dashboard() {
+          document.getElementById('dashboard-date').innerText = new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+          const today = utils.today(0);
+          const nowStr = utils.timeNow(0);
+          const todayOccs = [];
+
+          state.cares.forEach(c => {
+            const occ = c.occurrences.find(o => o.date === today);
+            if (occ) {
+              const p = state.patients.find(x => x.id === c.patientId) || { nom: 'Inconnu', prenom: '' };
+              const isLate = (occ.status === 'En attente' || occ.status === 'Reporté') && c.time < nowStr;
+              todayOccs.push({ care: c, occ, patient: p, isLate });
+            }
+          });
+
+          document.getElementById('stat-patients').innerText = state.patients.length;
+          document.getElementById('stat-today').innerText = todayOccs.length;
+          document.getElementById('stat-done').innerText = todayOccs.filter(x => x.occ.status === 'Réalisé').length;
+          document.getElementById('stat-late').innerText = todayOccs.filter(x => x.isLate).length;
+
+          const list = document.getElementById('dashboard-cares-list');
+          if (todayOccs.length === 0) {
+            list.innerHTML = '<p class="p-4 text-xs text-slate-400 text-center">Aucun soin prévu aujourd\'hui.</p>';
+            return;
+          }
+
+          list.innerHTML = todayOccs.map(item => `
+            <div class="p-3 flex items-center justify-between text-xs hover:bg-slate-50">
+              <div class="flex items-center space-x-3">
+                <div class="font-bold text-sky-700 min-w-[50px]">${item.care.time}</div>
+                <div>
+                  <div class="font-bold text-slate-900">${item.patient.nom} ${item.patient.prenom}</div>
+                  <div class="text-slate-500">${item.care.description} (Jour ${item.occ.day})</div>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                ${utils.badge(item.occ.status, item.isLate)}
+                ${item.occ.status !== 'Réalisé' ? `
+                  <button onclick="CareTime.cares.setStatus('${item.care.id}', ${item.occ.day}, 'Réalisé')" class="px-2 py-1 rounded bg-emerald-600 text-white font-bold text-[10px]">✓</button>
+                ` : ''}
+              </div>
+            </div>
+          `).join('');
+        },
+        patients() {
+          const q = (document.getElementById('patient-search')?.value || '').toLowerCase();
+          const grid = document.getElementById('patients-grid');
+          const filtered = state.patients.filter(p => p.nom.toLowerCase().includes(q) || p.prenom.toLowerCase().includes(q));
+
+          // Remplir select modal soin & select planning
+          const cSelect = document.getElementById('c-patient');
+          cSelect.innerHTML = '<option value="">-- Patient --</option>' + state.patients.map(p => `<option value="${p.id}">${p.nom} ${p.prenom}</option>`).join('');
+          const planSelect = document.getElementById('planning-pat-filter');
+          planSelect.innerHTML = '<option value="all">Tous les patients</option>' + state.patients.map(p => `<option value="${p.id}">${p.nom} ${p.prenom}</option>`).join('');
+
+          if (filtered.length === 0) {
+            grid.innerHTML = '<p class="text-xs text-slate-400 p-4">Aucun patient trouvé.</p>';
+            return;
+          }
+
+          grid.innerHTML = filtered.map(p => `
+            <div class="bg-white p-3.5 rounded-xl border border-slate-200 text-xs space-y-2">
+              <div class="flex justify-between items-start">
+                <div>
+                  <div class="font-bold text-slate-900 text-sm">${p.nom} ${p.prenom}</div>
+                  <div class="text-slate-500">${p.age ? p.age + ' ans' : ''} • ${p.contact || 'Sans contact'}</div>
+                </div>
+                <button onclick="CareTime.patients.edit('${p.id}')" class="text-slate-400 hover:text-slate-700">✏️</button>
+              </div>
+              <p class="text-slate-600 italic line-clamp-2">${p.observations || 'Aucune observation'}</p>
+              <div class="pt-2 border-t flex justify-between items-center">
+                <button onclick="CareTime.ui.openCard('${p.id}')" class="text-sky-600 font-bold hover:underline">Fiche & Historique</button>
+                <button onclick="CareTime.ui.scheduleFor('${p.id}')" class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold">+ Soin</button>
+              </div>
+            </div>
+          `).join('');
+        },
+        planning() {
+          const date = document.getElementById('planning-date').value || utils.today(0);
+          document.getElementById('planning-date').value = date;
+          const pFilter = document.getElementById('planning-pat-filter').value;
+          const sFilter = document.getElementById('planning-status-filter').value;
+          const list = document.getElementById('planning-list');
+
+          const items = [];
+          state.cares.forEach(c => {
+            if (pFilter !== 'all' && c.patientId !== pFilter) return;
+            c.occurrences.forEach(occ => {
+              if (occ.date !== date) return;
+              if (sFilter !== 'all' && occ.status !== sFilter) return;
+              const p = state.patients.find(x => x.id === c.patientId) || { nom: 'Inconnu', prenom: '' };
+              items.push({ care: c, occ, pat: p });
+            });
+          });
+
+          if (items.length === 0) {
+            list.innerHTML = '<p class="text-xs text-slate-400 text-center py-4">Aucun soin programmé pour cette sélection.</p>';
+            return;
+          }
+
+          list.innerHTML = items.map(i => `
+            <div class="p-3 border rounded-lg flex items-center justify-between text-xs">
+              <div>
+                <span class="font-bold text-sky-700 mr-2">${i.care.time}</span>
+                <span class="font-bold text-slate-900">${i.pat.nom} ${i.pat.prenom}</span>
+                <span class="text-slate-500 ml-2">${i.care.description} (J${i.occ.day}/${i.care.durationDays})</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                ${utils.badge(i.occ.status)}
+                <select onchange="CareTime.cares.setStatus('${i.care.id}', ${i.occ.day}, this.value)" class="p-1 border rounded bg-white text-[10px]">
+                  <option value="En attente" ${i.occ.status === 'En attente' ? 'selected' : ''}>En attente</option>
+                  <option value="Réalisé" ${i.occ.status === 'Réalisé' ? 'selected' : ''}>Réalisé</option>
+                  <option value="Reporté" ${i.occ.status === 'Reporté' ? 'selected' : ''}>Reporté</option>
+                  <option value="Manqué" ${i.occ.status === 'Manqué' ? 'selected' : ''}>Manqué</option>
+                </select>
+              </div>
+            </div>
+          `).join('');
+        },
+        suivi() {
+          const list = document.getElementById('suivi-list');
+          const items = [];
+          state.cares.forEach(c => {
+            const p = state.patients.find(x => x.id === c.patientId) || { nom: 'Inconnu', prenom: '' };
+            c.occurrences.forEach(occ => {
+              if (state.suiviTab === 'all' || occ.status === state.suiviTab) {
+                items.push({ care: c, occ, pat: p });
+              }
+            });
+          });
+
+          if (items.length === 0) {
+            list.innerHTML = '<p class="text-xs text-slate-400 p-4 text-center">Aucun acte correspondant.</p>';
+            return;
+          }
+
+          list.innerHTML = items.map(i => `
+            <div class="p-3 flex justify-between items-center text-xs">
+              <div>
+                <span class="font-semibold text-slate-600 mr-2">${i.occ.date} à ${i.care.time}</span>
+                <span class="font-bold text-slate-900">${i.pat.nom} ${i.pat.prenom}</span>
+                <span class="text-slate-500 ml-1">- ${i.care.description} (J${i.occ.day})</span>
+              </div>
+              <div class="flex items-center space-x-2">
+                ${utils.badge(i.occ.status)}
+                <select onchange="CareTime.cares.setStatus('${i.care.id}', ${i.occ.day}, this.value)" class="p-1 border rounded bg-white text-[10px]">
+                  <option value="En attente" ${i.occ.status === 'En attente' ? 'selected' : ''}>En attente</option>
+                  <option value="Réalisé" ${i.occ.status === 'Réalisé' ? 'selected' : ''}>Réalisé</option>
+                  <option value="Reporté" ${i.occ.status === 'Reporté' ? 'selected' : ''}>Reporté</option>
+                  <option value="Manqué" ${i.occ.status === 'Manqué' ? 'selected' : ''}>Manqué</option>
+                </select>
+              </div>
+            </div>
+          `).join('');
+        }
+      };
+
+      // INTERFACE & NAVIGATION
+      const ui = {
+        navigate(viewId) {
+          ['dashboard', 'patients', 'planning', 'suivi', 'settings'].forEach(v => {
+            document.getElementById(`view-${v}`).classList.toggle('hidden', v !== viewId);
+            const btn = document.getElementById(`nav-${v}`);
+            if (btn) btn.className = v === viewId ? 'w-full text-left px-3 py-2 rounded-lg text-sm font-semibold bg-sky-50 text-sky-700' : 'w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50';
+          });
+          if (viewId === 'dashboard') render.dashboard();
+          if (viewId === 'patients') render.patients();
+          if (viewId === 'planning') render.planning();
+          if (viewId === 'suivi') render.suivi();
+        },
+        openModal(id) {
+          audio.init();
+          const el = document.getElementById(id);
+          el.classList.remove('hidden');
+          el.classList.add('flex');
+          if (id === 'modal-care') {
+            document.getElementById('c-date').value = utils.today(0);
+            document.getElementById('c-time').value = utils.timeNow(15);
+          }
+        },
+        closeModal(id) {
+          const el = document.getElementById(id);
+          el.classList.add('hidden');
+          el.classList.remove('flex');
+        },
+        setSuiviTab(tab) {
+          state.suiviTab = tab;
+          document.querySelectorAll('.tab-btn').forEach(b => {
+            const isMatch = b.dataset.tab === tab;
+            b.className = isMatch ? 'tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-sky-600 text-white' : 'tab-btn px-2.5 py-1 text-xs font-bold rounded-full bg-slate-100 text-slate-600';
+          });
+          render.suivi();
+        },
+        openCard(id) {
+          const p = state.patients.find(x => x.id === id);
+          if (!p) return;
+          document.getElementById('card-name').innerText = `${p.nom} ${p.prenom}`;
+          document.getElementById('card-meta').innerText = `${p.age ? p.age + ' ans • ' : ''}Contact : ${p.contact || 'Non précisé'}`;
+          document.getElementById('card-obs').innerText = p.observations || 'Aucune observation enregistrée.';
+          document.getElementById('card-del-btn').onclick = () => patients.del(p.id);
+
+          const list = document.getElementById('card-timeline');
+          const pCares = state.cares.filter(c => c.patientId === id);
+          if (pCares.length === 0) {
+            list.innerHTML = '<p class="text-slate-400 italic">Aucun soin prescrit.</p>';
+          } else {
+            list.innerHTML = pCares.map(c => `
+              <div class="p-2 border rounded bg-slate-50 space-y-1">
+                <div class="font-bold text-slate-800">${c.description} (${c.time})</div>
+                <div class="grid grid-cols-2 gap-1 text-[10px]">
+                  ${c.occurrences.map(o => `<div>J${o.day} (${o.date}) : <strong>${o.status}</strong></div>`).join('')}
+                </div>
+              </div>
+            `).join('');
+          }
+          ui.openModal('modal-card');
+        },
+        scheduleFor(id) {
+          ui.openModal('modal-care');
+          document.getElementById('c-patient').value = id;
+        }
+      };
+
+      const team = {
+        toggleRole() {
+          state.role = state.role === 'pro' ? 'resp' : 'pro';
+          document.getElementById('role-btn').innerText = state.role === 'resp' ? 'Resp. Service' : 'Infirmier(ère)';
+          document.getElementById('sup-alert').classList.toggle('hidden', state.role !== 'resp');
+          storage.save();
+        }
+      };
+
+      const settings = {
+        setReminder(val) {
+          state.defaultRem = parseInt(val, 10);
+          storage.save();
+        }
+      };
+
+      function init() {
+        storage.load();
+        document.getElementById('tz-label').innerText = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        render.all();
+        setInterval(reminders.check, 10000);
+      }
+
+      return { audio, notif, reminders, patients, cares, storage, ui, team, settings, render, init };
+    })();
+
+    window.addEventListener('DOMContentLoaded', CareTime.init);
+  </script>
+</body>
+</html>
